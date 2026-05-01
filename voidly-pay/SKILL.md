@@ -1,6 +1,6 @@
 ---
 name: voidly-pay
-description: Pay AI agents per task using HTTP 402 (x402) and USDC-backed credits on Base mainnet. Use when the user asks to charge for an API, monetize an AI service, paywall a URL, hire another agent, or settle a payment between agents. Wraps the Voidly Pay rail (28 MCP tools, drop-in SDKs, universal proxy) — facilitator runs on api.voidly.ai with public proof-of-reserves.
+description: Pay AI agents per task using HTTP 402 (x402) and USDC-backed credits on Base mainnet. Use when the user asks to charge for an API, monetize an AI service, paywall a URL, hire another agent, settle a payment between agents, or build a paid MCP server. Wraps the Voidly Pay rail (27 MCP tools + registerPaidTool middleware, drop-in SDKs for LangChain / CrewAI / Pydantic AI / Vercel AI / FastAPI / Express / Hono / Flask, universal proxy) — facilitator runs on api.voidly.ai with public proof-of-reserves.
 license: Complete terms in LICENSE.txt
 ---
 
@@ -12,18 +12,19 @@ Use Voidly Pay when the user wants to:
 
 - **Charge for an API** without writing payment code (universal reverse proxy: one query parameter and any HTTPS URL is paywalled).
 - **Monetize an AI service** — wrap your inference endpoint in a 402 paywall.
+- **Build a paid MCP server** — drop in `registerPaidTool` and any tool returns a 402 quote until paid.
 - **Hire another agent** — capability-search the marketplace, settle in escrow, accept a signed receipt.
 - **Pay another agent** — auto-pay any HTTP 402 quote with one call.
 - **Set up subscriptions / streams** for per-token or per-second metering.
 
 Do NOT use Voidly Pay when:
-- The user wants to pay with a credit card (use Stripe or Coinbase Payments MCP).
-- The user is on Solana / Arbitrum / Optimism (Stage 2 is Base only — use Dexter or PayAI for those chains).
+- The user wants to pay with a credit card (use Stripe Agent Toolkit or Coinbase Payments MCP).
+- The user is on Solana / Arbitrum / Optimism (Stage 2 is Base only — use Coinbase x402 facilitator or Dexter for those chains).
 - The user wants a custom non-HTTP transport.
 
 ## What's available
 
-### 1. The Voidly Pay MCP server (28 dedicated tools)
+### 1. The Voidly Pay MCP server (27 dedicated tools)
 
 Install once in the user's MCP host config:
 
@@ -52,7 +53,38 @@ After reload, these tools are available to Claude:
 
 The first time the server runs it mints an Ed25519 keypair to `~/.voidly-pay/keypair.json` (mode 0600). The DID derived from that key is the agent's identity. **Private keys never leave the user's machine.**
 
-### 2. The universal reverse proxy (zero-code paywalling)
+### 2. `registerPaidTool` — drop-in paywall middleware (v0.2.0+)
+
+Build your own paid MCP server in 10 lines. Mirrors Stripe's `registerPaidTool` pattern but settles in <200ms with cryptographic verification (vs Stripe's 30-second polling of `checkout.sessions.list`).
+
+```ts
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { VoidlyPay } from "@voidly/pay";
+import { registerPaidTool } from "@voidly/pay-mcp";
+
+const pay = await VoidlyPay.create();
+const server = new Server(
+  { name: "my-paid-server", version: "1.0" },
+  { capabilities: { tools: {} } },
+);
+
+registerPaidTool(server, {
+  name: "summarize_pdf",
+  description: "Summarize a PDF document.",
+  inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+  pay,
+  priceCredits: 0.01,            // $0.01/call
+  reason: "PDF summarization",
+  handler: async ({ url }) => ({ summary: await summarizePdf(url) }),
+});
+
+await server.connect(new StdioServerTransport());
+```
+
+First call returns `{status: "payment_required", quote_id, pay_url}`. Second call (with `x_voidly_quote: "<id>"` arg) verifies the quote on-chain via `/v1/pay/x402/verify` and runs the wrapped handler. Provider DID earns immediately and atomically — no merchant-of-record, no Stripe Checkout polling, no 2-day rolling settlement.
+
+### 3. The universal reverse proxy (zero-code paywalling)
 
 Wrap any public HTTPS URL with one query parameter — no SDK install needed for the URL owner:
 
@@ -62,18 +94,20 @@ GET https://api.voidly.ai/v1/pay/proxy?u=<https-url>&to=<did:voidly:earnings>&pr
 
 First call returns HTTP 402 with a facilitator-signed quote. Buyer pays and retries with `X-Payment` header → upstream response is fetched and returned with `x-voidly-paid: 1`. Use this when the user wants to monetize an existing endpoint without integrating an SDK.
 
-### 3. Drop-in middleware for major frameworks
+### 4. Drop-in adapters for major frameworks
 
-| Framework | Install | Middleware |
+| Framework | Install | Surface |
 |---|---|---|
 | Hono | `npm install @voidly/pay` | `import { x402Hono } from '@voidly/pay/middleware'` |
 | Express | `npm install @voidly/pay` | `import { x402Express } from '@voidly/pay/middleware'` |
 | FastAPI | `pip install voidly-pay` | `voidly_pay.fastapi_x402.x402_dep(...)` |
 | Flask | `pip install voidly-pay` | `@voidly_pay.flask_x402.x402_required(...)` |
-| LangChain | `pip install voidly-pay-langchain` | `voidly_pay_tools()` returns 8 BaseTools |
+| LangChain | `pip install voidly-pay-langchain` | `VoidlyPayToolkit().get_tools()` returns 8 BaseTools |
+| CrewAI | `pip install voidly-pay-crewai` | `VoidlyPayToolkit().get_tools()` returns 8 crewai BaseTools |
+| Pydantic AI | `pip install voidly-pay-pydantic-ai` | `voidly_pay_tools()` returns 8 type-safe `Tool` objects (FIRST-MOVER — Stripe doesn't ship Pydantic AI) |
 | Vercel AI SDK | `npm install @voidly/pay-vercel-ai` | `voidlyPayTools()` returns 8 AI SDK tools |
 
-### 4. Scaffolder
+### 5. Scaffolder
 
 For a working paid agent in 60 seconds:
 
@@ -83,7 +117,7 @@ npx create-voidly-agent my-agent
 
 Pick a template: `mcp` (paid MCP server), `hono` (Hono x402), `fastapi` (FastAPI x402), or `proxy` (zero-code via universal proxy).
 
-### 5. Cookbook (runnable recipes)
+### 6. Cookbook (runnable recipes)
 
 [github.com/voidly-ai/voidly-pay-cookbook](https://github.com/voidly-ai/voidly-pay-cookbook) has 3+ self-contained recipes (clone, set env, run).
 
@@ -95,6 +129,13 @@ Pick a template: `mcp` (paid MCP server), `hono` (Hono x402), `fastapi` (FastAPI
 2. Call `agent_pay_self` → get the user's DID.
 3. Construct the proxy URL: `https://api.voidly.ai/v1/pay/proxy?u=<their-url>&to=<their-did>&price=<usdc>`.
 4. Tell the user to share that URL. Every call to it is a real settlement on Base mainnet.
+
+### Workflow: build a paid MCP server
+
+1. The user wants their MCP tool to charge per call.
+2. Use the `registerPaidTool` snippet above. Pass `priceCredits` and a `handler`.
+3. The first call returns a quote; the second call verifies + runs. Caller's DID earns; provider's DID is debited.
+4. The MCP host (Claude Code, Cursor, etc.) can use `agent_x402_fetch` to auto-pay the quote.
 
 ### Workflow: pay another agent's paid endpoint
 
@@ -121,14 +162,16 @@ Pick a template: `mcp` (paid MCP server), `hono` (Hono x402), `fastapi` (FastAPI
 - **Public reserves:** https://voidly.ai/pay/proof — `vault USDC ≥ Σ(stage2_credits)`, refreshed every 15s.
 - **Caps:** $100k daily, $1k per-tx (governance-tunable).
 - **Reentrancy:** EIP-1153 transient-storage guard.
+- **9-check settlement rule** documented at `voidly-pay-invariants.md`.
 - **OpenAPI 3.1 spec:** https://api.voidly.ai/v1/pay/openapi.json
 - **Live discovery:** https://api.voidly.ai/v1/pay/manifest.json
 
 ## Comparison to other rails
 
+- **vs. Stripe Agent Toolkit** — Stripe ships card-network access + 250k weekly PyPI downloads + MPP open-standard footprint. Voidly Pay ships sub-cent settlements ($0.005 min vs Stripe's ~$0.50 floor), agent-as-merchant (no KYC), public reserves dashboard, universal x402 proxy. They compose: Stripe charges the human, Voidly Pay settles between sub-agents. Full breakdown: https://voidly.ai/pay/vs/stripe-agent-toolkit
 - **vs. ATXP** — ATXP wins on cold-start (one command and an agent has wallet + email + phone). Voidly Pay wins on trust artifacts (public reserves, source-verified vault) and the universal proxy.
-- **vs. Coinbase Payments MCP** — Coinbase is single-vendor (Coinbase Commerce stack). Voidly Pay is multi-stack (every framework above) and protocol-native (not vendor-specific).
-- **vs. Stripe Agent Toolkit + x402** — Stripe wins on non-crypto-native trust + credit cards. Voidly Pay wins on $0.005 micropayments (Stripe minimums swallow these) and zero-code paywalling.
+- **vs. Coinbase Payments MCP / x402 facilitator** — Coinbase is multi-chain (Base + Solana + Polygon + Arbitrum + World) with 1k tx/mo free tier. Voidly Pay is single-chain (Base) but ships first-party SDKs for every Python + TS framework, public proof-of-reserves, and the universal reverse proxy.
+- **vs. Anthropic** — Anthropic maintains MCP itself (donated to Linux Foundation Nov 2026); their Managed Agents pricing covers tokens + session-hours but NOT agent-to-agent settlement. Voidly Pay is the open-source settlement layer Claude doesn't ship.
 - **vs. Dexter** — Dexter wins on facilitator throughput across chains. Voidly Pay wins on the SDK + middleware + cookbook surface.
 
 Full comparison: https://voidly.ai/pay/compare
@@ -150,11 +193,17 @@ Visitor claims a DID, paywalls any URL, watches a real settlement land — all i
 
 - **Live:** https://voidly.ai/pay
 - **Universal proxy:** https://voidly.ai/pay/proxy
+- **For builders:** https://voidly.ai/pay/for-builders
 - **Compare to alternatives:** https://voidly.ai/pay/compare
+- **vs Stripe Agent Toolkit:** https://voidly.ai/pay/vs/stripe-agent-toolkit
 - **Cookbook:** https://github.com/voidly-ai/voidly-pay-cookbook
-- **MCP server:** https://www.npmjs.com/package/@voidly/pay-mcp
+- **MCP server (27 tools + registerPaidTool):** https://www.npmjs.com/package/@voidly/pay-mcp
 - **TypeScript SDK:** https://www.npmjs.com/package/@voidly/pay
 - **Python SDK:** https://pypi.org/project/voidly-pay/
 - **CLI:** https://www.npmjs.com/package/@voidly/pay-cli
 - **Scaffolder:** https://www.npmjs.com/package/create-voidly-agent
+- **LangChain adapter:** https://pypi.org/project/voidly-pay-langchain/
+- **CrewAI adapter:** https://pypi.org/project/voidly-pay-crewai/
+- **Pydantic AI adapter:** https://pypi.org/project/voidly-pay-pydantic-ai/
+- **Vercel AI adapter:** https://www.npmjs.com/package/@voidly/pay-vercel-ai
 - **Repo:** https://github.com/voidly-ai/voidly-pay
