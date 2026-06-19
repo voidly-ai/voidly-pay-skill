@@ -60,9 +60,9 @@ Claim a DID + 10 starter credits, paywall any URL, watch a real settlement land 
 
 ## Trust posture
 
-- **USDC-backed:** Stage 2 vault on Base mainnet at [`0xb592512932a7b354969bb48039c2dc7ad6ad1c12`](https://basescan.org/address/0xb592512932a7b354969bb48039c2dc7ad6ad1c12). [Sourcify-verified](https://repo.sourcify.dev/contracts/full_match/8453/0xb592512932a7b354969bb48039c2dc7ad6ad1c12/), non-upgradable.
+- **USDC-backed:** Stage 2 vault on Base mainnet at [`0xd25d3c6f32886b65356cc5c700382a8a02d84df5`](https://basescan.org/address/0xd25d3c6f32886b65356cc5c700382a8a02d84df5). [Sourcify-verified](https://repo.sourcify.dev/contracts/full_match/8453/0xd25d3c6f32886b65356cc5c700382a8a02d84df5/), non-upgradable.
 - **Public reserves:** https://voidly.ai/pay/proof (vault USDC ≥ Σ(stage2_credits), refreshed every 15s)
-- **Caps:** $100k daily, $1k per-tx
+- **Caps:** $100 daily, $10 per-tx
 - **OpenAPI 3.1:** https://api.voidly.ai/v1/pay/openapi.json
 
 ## Other ways to integrate

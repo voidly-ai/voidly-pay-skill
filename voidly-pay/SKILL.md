@@ -158,9 +158,9 @@ Pick a template: `mcp` (paid MCP server), `hono` (Hono x402), `fastapi` (FastAPI
 
 ## Trust posture
 
-- **USDC-backed:** Stage 2 vault on Base mainnet at `0xb592512932a7b354969bb48039c2dc7ad6ad1c12`. [Sourcify exact_match verified](https://repo.sourcify.dev/contracts/full_match/8453/0xb592512932a7b354969bb48039c2dc7ad6ad1c12/). Non-upgradable.
+- **USDC-backed:** Stage 2 vault on Base mainnet at `0xd25d3c6f32886b65356cc5c700382a8a02d84df5`. [Sourcify exact_match verified](https://repo.sourcify.dev/contracts/full_match/8453/0xd25d3c6f32886b65356cc5c700382a8a02d84df5/). Non-upgradable.
 - **Public reserves:** https://voidly.ai/pay/proof — `vault USDC ≥ Σ(stage2_credits)`, refreshed every 15s.
-- **Caps:** $100k daily, $1k per-tx (governance-tunable).
+- **Caps:** $100 daily, $10 per-tx (governance-tunable).
 - **Reentrancy:** EIP-1153 transient-storage guard.
 - **9-check settlement rule** documented at `voidly-pay-invariants.md`.
 - **OpenAPI 3.1 spec:** https://api.voidly.ai/v1/pay/openapi.json
